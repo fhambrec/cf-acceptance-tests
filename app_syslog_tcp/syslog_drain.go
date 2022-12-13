@@ -1,7 +1,11 @@
 package apps
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"regexp"
+	"strconv"
 	"time"
 
 	. "github.com/cloudfoundry/cf-acceptance-tests/cats_suite_helpers"
@@ -18,7 +22,14 @@ import (
 	. "github.com/onsi/gomega/gexec"
 )
 
-var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
+const numberOfListenerApps = 2
+
+type Credentials struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+var _ = AppSyslogTcpDescribe("Syslog Drain over TCP (ip based)", func() {
 	var logWriterAppName1 string
 	var logWriterAppName2 string
 	var listenerAppName string
@@ -30,10 +41,15 @@ var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
 
 	Describe("Syslog drains", func() {
 		BeforeEach(func() {
+			if Config.GetIncludeTCPRouting() {
+				Skip("tcp routing active. Skipping ip based syslog_drain test")
+			}
 			interrupt = make(chan struct{}, 1)
 			serviceNames = []string{
-				random_name.CATSRandomName("SVIN"),
-				random_name.CATSRandomName("SVIN-INT"),
+				random_name.CATSRandomName("SVIN1"),
+				random_name.CATSRandomName("SVIN-INT1"),
+				random_name.CATSRandomName("SVIN2"),
+				random_name.CATSRandomName("SVIN-INT2"),
 			}
 			listenerAppName = random_name.CATSRandomName("APP-SYSLOG-LISTENER")
 			logWriterAppName1 = random_name.CATSRandomName("APP-FIRST-LOG-WRITER")
@@ -47,6 +63,8 @@ var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
 				"-m", DEFAULT_MEMORY_LIMIT,
 				"-p", assets.NewAssets().SyslogDrainListener,
 				"-f", assets.NewAssets().SyslogDrainListener+"/manifest.yml",
+				"-i",
+				strconv.Itoa(numberOfListenerApps),
 			), Config.CfPushTimeoutDuration()).Should(Exit(0), "Failed to push app")
 
 			Eventually(cf.Cf(
@@ -67,6 +85,9 @@ var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
 		})
 
 		AfterEach(func() {
+			if Config.GetIncludeTCPRouting() {
+				Skip("tcp routing active. Skipping ip based syslog_drain test")
+			}
 			logs.Kill()
 			close(interrupt)
 
@@ -86,7 +107,14 @@ var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
 			Eventually(cf.Cf("delete-orphaned-routes", "-f"), Config.CfPushTimeoutDuration()).Should(Exit(0), "Failed to delete orphaned routes")
 		})
 
-		It("forwards app messages to registered syslog drains", func() {
+		It("forwards app messages to registered IP based syslog drains", func() {
+			cert := Config.GetAppSyslogTcpClientCert()
+			key := Config.GetAppSyslogTcpClientKey()
+			credentials, err := json.Marshal(Credentials{Cert: cert, Key: key})
+			if err != nil {
+				panic(err)
+			}
+
 			// The syslog drains return two IP addresses: external & internal.
 			// On a vanilla environment, apps can connect through the syslog service
 			// to the external IP (Diego cell address and external port) of the drain
@@ -101,7 +129,11 @@ var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
 					syslogDrainURL = "syslog://" + address
 				}
 
-				Eventually(cf.Cf("cups", serviceNames[i], "-l", syslogDrainURL)).Should(Exit(0), "Failed to create syslog drain service")
+				if cert == "" || key == "" {
+					Eventually(cf.Cf("cups", serviceNames[i], "-l", syslogDrainURL)).Should(Exit(0), "Failed to create syslog drain service")
+				} else {
+					Eventually(cf.Cf("cups", serviceNames[i], "-l", syslogDrainURL, "-p", string(credentials))).Should(Exit(0), "Failed to create syslog drain service")
+				}
 				Eventually(cf.Cf("bind-service", logWriterAppName1, serviceNames[i])).Should(Exit(0), "Failed to bind service")
 				// We don't need to restage, because syslog service bindings don't change the app's environment variables
 			}
@@ -114,31 +146,70 @@ var _ = AppSyslogTcpDescribe("Syslog Drain over TCP", func() {
 			// Have apps emit logs.
 			go writeLogsUntilInterrupted(interrupt, randomMessage1, logWriterAppName1)
 			go writeLogsUntilInterrupted(interrupt, randomMessage2, logWriterAppName2)
-
 			Eventually(logs, Config.DefaultTimeoutDuration()+2*time.Minute).Should(Say(randomMessage1))
+
 			Consistently(logs, 10).ShouldNot(Say(randomMessage2))
 		})
 	})
 })
 
 func getSyslogDrainAddresses(appName string) []string {
-	var address, internalAddress []byte
+	var addresses []string
+	searchPatterns := []string{"CF_INSTANCE_INTERNAL_IP", "CF_INSTANCE_IP", "CF_INSTANCE_PORTS"}
+	var regexMatches = make(map[string]string)
+	var internalPort, externalPort uint16
 
-	Eventually(func() [][]byte {
-		re, err := regexp.Compile("EXTERNAL ADDRESS: \\|(.*)\\|; INTERNAL ADDRESS: \\|(.*)\\|")
-		Expect(err).NotTo(HaveOccurred())
+	for i := 0; i < numberOfListenerApps; i++ {
+		Eventually(func() []string {
+			var appEnvironment = cf.Cf("ssh", appName, "-c env", "-i", strconv.Itoa(i)).Wait().Out.Contents()
 
-		logs := logshelper.Recent(appName).Wait()
-		matched := re.FindSubmatch(logs.Out.Contents())
-		if len(matched) < 3 {
-			return nil
-		}
-		address = matched[1]
-		internalAddress = matched[2]
-		return [][]byte{address, internalAddress}
-	}).Should(Not(BeNil()))
+			for _, pattern := range searchPatterns {
+				expression, err := regexp.Compile(pattern + "=(.*)")
+				Expect(err).NotTo(HaveOccurred())
+				regexMatches[pattern] = string(expression.FindSubmatch(appEnvironment)[1])
+			}
 
-	return []string{string(address), string(internalAddress)}
+			internalPort, externalPort = parseInstancePorts([]byte(regexMatches["CF_INSTANCE_PORTS"]))
+
+			internalAddress := fmt.Sprintf("%s:%d", regexMatches["CF_INSTANCE_INTERNAL_IP"], internalPort)
+			externalAddress := fmt.Sprintf("%s:%d", regexMatches["CF_INSTANCE_IP"], externalPort)
+			addresses = append(addresses, externalAddress)
+			addresses = append(addresses, internalAddress)
+
+			return []string{externalAddress, internalAddress}
+		}).Should(Not(BeNil()))
+	}
+
+	return addresses
+}
+
+func parseInstancePorts(instancePorts []byte) (uint16, uint16) {
+	var internalPort uint16 = 8080
+	var externalPort uint16
+
+	var ports []struct {
+		External         uint16 `json:"external"`
+		ExternalTLSProxy uint16 `json:"external_tls_proxy"`
+	}
+
+	err := json.Unmarshal(instancePorts, &ports)
+
+	if err != nil {
+		fmt.Printf("Cannot unmarshal CF_INSTANCE_PORTS: %s", err)
+		os.Exit(1)
+	}
+
+	if len(ports) <= 0 {
+		fmt.Printf("CF_INSTANCE_PORTS is empty")
+		os.Exit(1)
+	}
+
+	externalPort = ports[0].External
+	if externalPort == 0 {
+		externalPort = ports[0].ExternalTLSProxy
+	}
+
+	return internalPort, externalPort
 }
 
 func writeLogsUntilInterrupted(interrupt chan struct{}, randomMessage string, logWriterAppName string) {

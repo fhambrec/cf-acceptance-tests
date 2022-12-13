@@ -114,11 +114,9 @@ type allConfig struct {
 	GoBuildpackName         *string `json:"go_buildpack_name"`
 	HwcBuildpackName        *string `json:"hwc_buildpack_name"`
 	JavaBuildpackName       *string `json:"java_buildpack_name"`
-	NginxBuildpackName      *string `json:"nginx_buildpack_name"`
 	NodejsBuildpackName     *string `json:"nodejs_buildpack_name"`
 	PhpBuildpackName        *string `json:"php_buildpack_name"`
 	PythonBuildpackName     *string `json:"python_buildpack_name"`
-	RBuildpackName          *string `json:"r_buildpack_name"`
 	RubyBuildpackName       *string `json:"ruby_buildpack_name"`
 	StaticFileBuildpackName *string `json:"staticfile_buildpack_name"`
 
@@ -241,6 +239,8 @@ var _ = Describe("Config", func() {
 		Expect(config.GetIsolationSegmentName()).To(Equal(""))
 		Expect(config.GetIsolationSegmentDomain()).To(Equal(""))
 
+		Expect(config.GetAppSyslogTcpClientCert()).To(BeEmpty())
+		Expect(config.GetAppSyslogTcpClientKey()).To(BeEmpty())
 		Expect(config.GetIncludeAppSyslogTcp()).To(BeTrue())
 		Expect(config.GetIncludeApps()).To(BeTrue())
 		Expect(config.GetIncludeDetect()).To(BeTrue())
@@ -576,27 +576,15 @@ var _ = Describe("Config", func() {
 		})
 	})
 
-	Context("when providing invalid stacks property", func() {
+	Context("when providing stacks property", func() {
 		BeforeEach(func() {
 			testCfg.Stacks = &[]string{"my-custom-stack"}
 		})
 
-		It("returns error if a stack other than cflinuxfs3 or cflinuxfs4 is provided", func() {
+		It("returns error if a stack other than cflinuxfs3 is provided", func() {
 			_, err := cfg.NewCatsConfig(tmpFilePath)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError("* Invalid configuration: unknown stack 'my-custom-stack'. Only 'cflinuxfs3' and 'cflinuxfs4' is supported for the 'stacks' property"))
-		})
-	})
-
-	Context("when providing valid stacks property", func() {
-		BeforeEach(func() {
-			testCfg.Stacks = &[]string{"cflinuxfs3", "cflinuxfs4"}
-		})
-
-		It("is loaded into the config", func() {
-			config, err := cfg.NewCatsConfig(tmpFilePath)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(config.GetStacks()).To(Equal([]string{"cflinuxfs3", "cflinuxfs4"}))
+			Expect(err).To(MatchError("* Invalid configuration: unknown stack 'my-custom-stack'. Only 'cflinuxfs3' is supported for the 'stacks' property"))
 		})
 	})
 

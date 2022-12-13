@@ -56,11 +56,9 @@ type config struct {
 	GoBuildpackName         *string `json:"go_buildpack_name"`
 	HwcBuildpackName        *string `json:"hwc_buildpack_name"`
 	JavaBuildpackName       *string `json:"java_buildpack_name"`
-	NginxBuildpackName      *string `json:"nginx_buildpack_name"`
 	NodejsBuildpackName     *string `json:"nodejs_buildpack_name"`
 	PhpBuildpackName        *string `json:"php_buildpack_name"`
 	PythonBuildpackName     *string `json:"python_buildpack_name"`
-	RBuildpackName          *string `json:"r_buildpack_name"`
 	RubyBuildpackName       *string `json:"ruby_buildpack_name"`
 	StaticFileBuildpackName *string `json:"staticfile_buildpack_name"`
 
@@ -68,32 +66,34 @@ type config struct {
 	VolumeServicePlanName     *string `json:"volume_service_plan_name"`
 	VolumeServiceCreateConfig *string `json:"volume_service_create_config"`
 
-	IncludeAppSyslogTcp             *bool `json:"include_app_syslog_tcp"`
-	IncludeApps                     *bool `json:"include_apps"`
-	IncludeContainerNetworking      *bool `json:"include_container_networking"`
-	IncludeDeployments              *bool `json:"include_deployments"`
-	IncludeDetect                   *bool `json:"include_detect"`
-	IncludeDocker                   *bool `json:"include_docker"`
-	IncludeInternetDependent        *bool `json:"include_internet_dependent"`
-	IncludeIsolationSegments        *bool `json:"include_isolation_segments"`
-	IncludePrivateDockerRegistry    *bool `json:"include_private_docker_registry"`
-	IncludeRouteServices            *bool `json:"include_route_services"`
-	IncludeRouting                  *bool `json:"include_routing"`
-	IncludeRoutingIsolationSegments *bool `json:"include_routing_isolation_segments"`
-	IncludeSSO                      *bool `json:"include_sso"`
-	IncludeSecurityGroups           *bool `json:"include_security_groups"`
-	IncludeServiceDiscovery         *bool `json:"include_service_discovery"`
-	IncludeServiceInstanceSharing   *bool `json:"include_service_instance_sharing"`
-	IncludeServices                 *bool `json:"include_services"`
-	IncludeUserProvidedServices     *bool `json:"include_user_provided_services"`
-	IncludeSsh                      *bool `json:"include_ssh"`
-	IncludeTCPIsolationSegments     *bool `json:"include_tcp_isolation_segments"`
-	IncludeHTTP2Routing             *bool `json:"include_http2_routing"`
-	IncludeTCPRouting               *bool `json:"include_tcp_routing"`
-	IncludeTasks                    *bool `json:"include_tasks"`
-	IncludeV3                       *bool `json:"include_v3"`
-	IncludeVolumeServices           *bool `json:"include_volume_services"`
-	IncludeZipkin                   *bool `json:"include_zipkin"`
+	AppSyslogTcpClientCert          *string `json:"app_syslog_tcp_client_cert"`
+	AppSyslogTcpClientKey           *string `json:"app_syslog_tcp_client_key"`
+	IncludeAppSyslogTcp             *bool   `json:"include_app_syslog_tcp"`
+	IncludeApps                     *bool   `json:"include_apps"`
+	IncludeContainerNetworking      *bool   `json:"include_container_networking"`
+	IncludeDeployments              *bool   `json:"include_deployments"`
+	IncludeDetect                   *bool   `json:"include_detect"`
+	IncludeDocker                   *bool   `json:"include_docker"`
+	IncludeInternetDependent        *bool   `json:"include_internet_dependent"`
+	IncludeIsolationSegments        *bool   `json:"include_isolation_segments"`
+	IncludePrivateDockerRegistry    *bool   `json:"include_private_docker_registry"`
+	IncludeRouteServices            *bool   `json:"include_route_services"`
+	IncludeRouting                  *bool   `json:"include_routing"`
+	IncludeRoutingIsolationSegments *bool   `json:"include_routing_isolation_segments"`
+	IncludeSSO                      *bool   `json:"include_sso"`
+	IncludeSecurityGroups           *bool   `json:"include_security_groups"`
+	IncludeServiceDiscovery         *bool   `json:"include_service_discovery"`
+	IncludeServiceInstanceSharing   *bool   `json:"include_service_instance_sharing"`
+	IncludeServices                 *bool   `json:"include_services"`
+	IncludeUserProvidedServices     *bool   `json:"include_user_provided_services"`
+	IncludeSsh                      *bool   `json:"include_ssh"`
+	IncludeTCPIsolationSegments     *bool   `json:"include_tcp_isolation_segments"`
+	IncludeHTTP2Routing             *bool   `json:"include_http2_routing"`
+	IncludeTCPRouting               *bool   `json:"include_tcp_routing"`
+	IncludeTasks                    *bool   `json:"include_tasks"`
+	IncludeV3                       *bool   `json:"include_v3"`
+	IncludeVolumeServices           *bool   `json:"include_volume_services"`
+	IncludeZipkin                   *bool   `json:"include_zipkin"`
 
 	CredhubMode         *string `json:"credhub_mode"`
 	CredhubLocation     *string `json:"credhub_location"`
@@ -153,14 +153,14 @@ func getDefaults() config {
 	defaults.GoBuildpackName = ptrToString("go_buildpack")
 	defaults.HwcBuildpackName = ptrToString("hwc_buildpack")
 	defaults.JavaBuildpackName = ptrToString("java_buildpack")
-	defaults.NginxBuildpackName = ptrToString("nginx_buildpack")
 	defaults.NodejsBuildpackName = ptrToString("nodejs_buildpack")
 	defaults.PhpBuildpackName = ptrToString("php_buildpack")
 	defaults.PythonBuildpackName = ptrToString("python_buildpack")
-	defaults.RBuildpackName = ptrToString("r_buildpack")
 	defaults.RubyBuildpackName = ptrToString("ruby_buildpack")
 	defaults.StaticFileBuildpackName = ptrToString("staticfile_buildpack")
 
+	defaults.AppSyslogTcpClientCert = ptrToString("")
+	defaults.AppSyslogTcpClientKey = ptrToString("")
 	defaults.IncludeAppSyslogTcp = ptrToBool(true)
 	defaults.IncludeApps = ptrToBool(true)
 	defaults.IncludeDetect = ptrToBool(true)
@@ -379,9 +379,6 @@ func validateConfig(config *config) Errors {
 	if config.JavaBuildpackName == nil {
 		errs.Add(fmt.Errorf("* 'java_buildpack_name' must not be null"))
 	}
-	if config.NginxBuildpackName == nil {
-		errs.Add(fmt.Errorf("* 'nginx_buildpack_name' must not be null"))
-	}
 	if config.NodejsBuildpackName == nil {
 		errs.Add(fmt.Errorf("* 'nodejs_buildpack_name' must not be null"))
 	}
@@ -391,9 +388,6 @@ func validateConfig(config *config) Errors {
 	if config.PythonBuildpackName == nil {
 		errs.Add(fmt.Errorf("* 'python_buildpack_name' must not be null"))
 	}
-	if config.RBuildpackName == nil {
-		errs.Add(fmt.Errorf("* 'r_buildpack_name' must not be null"))
-	}
 	if config.RubyBuildpackName == nil {
 		errs.Add(fmt.Errorf("* 'ruby_buildpack_name' must not be null"))
 	}
@@ -402,6 +396,12 @@ func validateConfig(config *config) Errors {
 	}
 	if config.IncludeAppSyslogTcp == nil {
 		errs.Add(fmt.Errorf("* 'include_app_syslog_tcp' must not be null"))
+	}
+	if config.AppSyslogTcpClientCert == nil {
+		errs.Add(fmt.Errorf("* 'app_syslog_tcp_client_cert' must not be null"))
+	}
+	if config.AppSyslogTcpClientKey == nil {
+		errs.Add(fmt.Errorf("* 'app_syslog_tcp_client_key' must not be null"))
 	}
 	if config.IncludeApps == nil {
 		errs.Add(fmt.Errorf("* 'include_apps' must not be null"))
@@ -718,8 +718,8 @@ func validateStacks(config *config) error {
 	}
 
 	for _, stack := range config.GetStacks() {
-		if stack != "cflinuxfs3" && stack != "cflinuxfs4" {
-			return fmt.Errorf("* Invalid configuration: unknown stack '%s'. Only 'cflinuxfs3' and 'cflinuxfs4' is supported for the 'stacks' property", stack)
+		if stack != "cflinuxfs3" {
+			return fmt.Errorf("* Invalid configuration: unknown stack '%s'. Only 'cflinuxfs3' is supported for the 'stacks' property", stack)
 		}
 	}
 
@@ -877,6 +877,14 @@ func (c *config) GetIncludeSsh() bool {
 	return *c.IncludeSsh
 }
 
+func (c *config) GetAppSyslogTcpClientCert() string {
+	return *c.AppSyslogTcpClientCert
+}
+
+func (c *config) GetAppSyslogTcpClientKey() string {
+	return *c.AppSyslogTcpClientKey
+}
+
 func (c *config) GetIncludeAppSyslogTcp() bool {
 	return *c.IncludeAppSyslogTcp
 }
@@ -1001,10 +1009,6 @@ func (c *config) GetIncludeVolumeServices() bool {
 	return *c.IncludeVolumeServices
 }
 
-func (c *config) GetRBuildpackName() string {
-	return *c.RBuildpackName
-}
-
 func (c *config) GetRubyBuildpackName() string {
 	return *c.RubyBuildpackName
 }
@@ -1019,10 +1023,6 @@ func (c *config) GetHwcBuildpackName() string {
 
 func (c *config) GetJavaBuildpackName() string {
 	return *c.JavaBuildpackName
-}
-
-func (c *config) GetNginxBuildpackName() string {
-	return *c.NginxBuildpackName
 }
 
 func (c *config) GetNodejsBuildpackName() string {
